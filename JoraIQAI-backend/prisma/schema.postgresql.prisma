@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String?
+  name        String
+  role        String   @default("STUDENT") // TEACHER or STUDENT
+  supabaseUid String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quizzesCreated  Quiz[]           @relation("TeacherQuizzes")
+  assignments     QuizAssignment[] @relation("StudentAssignments")
+  attempts        QuizAttempt[]    @relation("StudentAttempts")
+
+  @@map("users")
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  teacherId   String
+  teacher     User     @relation("TeacherQuizzes", fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   Question[]
+  assignments QuizAssignment[]
+  attempts    QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id        String   @id @default(uuid())
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  text      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  options        Option[]
+  attemptAnswers AttemptAnswer[]
+
+  @@map("questions")
+}
+
+model Option {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+
+  attemptAnswers AttemptAnswer[]
+
+  @@map("options")
+}
+
+model QuizAssignment {
+  id          String    @id @default(uuid())
+  quizId      String
+  quiz        Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User      @relation("StudentAssignments", fields: [studentId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime  @default(now())
+  status      String    @default("PENDING") // PENDING, COMPLETED
+  completedAt DateTime?
+
+  attempt QuizAttempt?
+
+  @@unique([quizId, studentId])
+  @@map("quiz_assignments")
+}
+
+model QuizAttempt {
+  id               String         @id @default(uuid())
+  assignmentId     String         @unique
+  assignment       QuizAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  quizId           String
+  quiz             Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          User           @relation("StudentAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  totalQuestions   Int
+  correctAnswers   Int
+  incorrectAnswers Int
+  score            Int
+  accuracy         Float
+  startedAt        DateTime       @default(now())
+  submittedAt      DateTime       @default(now())
+
+  answers AttemptAnswer[]
+
+  @@map("quiz_attempts")
+}
+
+model AttemptAnswer {
+  id               String      @id @default(uuid())
+  attemptId        String
+  attempt          QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionId String
+  selectedOption   Option      @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
+  isCorrect        Boolean     @default(false)
+
+  @@map("attempt_answers")
+}
