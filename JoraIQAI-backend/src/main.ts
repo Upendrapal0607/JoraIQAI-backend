@@ -1,8 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, BadRequestException } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -20,10 +21,13 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
-  // Global exception filter
+  // Global exception filter for unified error format { success: false, status, error: { message, details } }
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Global validation pipe
+  // Global response interceptor for unified success format { success: true, status, data }
+  app.useGlobalInterceptors(new ResponseTransformInterceptor());
+
+  // Global DTO validation pipe with formatted nested error extraction
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -31,6 +35,25 @@ async function bootstrap() {
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,
+      },
+      exceptionFactory: (errors) => {
+        const formatErrors = (errs: any[]): string[] => {
+          const messages: string[] = [];
+          for (const err of errs) {
+            if (err.constraints) {
+              messages.push(...(Object.values(err.constraints) as string[]));
+            }
+            if (err.children && err.children.length > 0) {
+              messages.push(...formatErrors(err.children));
+            }
+          }
+          return messages;
+        };
+        const errorMessages = formatErrors(errors);
+        return new BadRequestException({
+          message: errorMessages,
+          error: 'Validation failed',
+        });
       },
     }),
   );
@@ -51,7 +74,6 @@ async function bootstrap() {
   const port = process.env.PORT || 4000;
   await app.listen(port);
   logger.log(`Server is running on: http://localhost:${port}`);
-  logger.log(`Swagger documentation: http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

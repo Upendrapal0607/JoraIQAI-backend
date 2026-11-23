@@ -44,4 +44,35 @@ export class UsersService {
       },
     });
   }
+
+  async getAllCategorizedUsers() {
+    const teachers = await this.prisma.user.findMany({
+      where: { role: 'TEACHER' },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const students = await this.prisma.user.findMany({
+      where: { role: 'STUDENT' },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return {
+      teacher: teachers,
+      student: students,
+    };
+  }
 }

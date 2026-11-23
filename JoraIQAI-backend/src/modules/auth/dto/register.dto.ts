@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Role } from '../../../common/enums/role.enum';
 
 export class RegisterDto {
-  @ApiProperty({ example: 'teacher@joraiq.ai' })
+  @ApiProperty({ example: 'teacher@school.edu' })
   @IsEmail({}, { message: 'Invalid email address' })
   email: string;
 

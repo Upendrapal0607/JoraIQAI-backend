@@ -55,6 +55,14 @@ export class AuthController {
     return this.authService.syncSupabaseUser(body);
   }
 
+  @Public()
+  @Get('supabase-status')
+  @ApiOperation({ summary: 'Check Supabase and active Database connection status' })
+  @ApiResponse({ status: 200, description: 'Supabase status retrieved' })
+  async getSupabaseStatus() {
+    return this.authService.checkSupabaseStatus();
+  }
+
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('me')

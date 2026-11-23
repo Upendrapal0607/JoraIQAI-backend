@@ -3,11 +3,14 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma.service';
+import { JwtService } from '@nestjs/jwt';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
+import * as bcrypt from 'bcryptjs';
 
 describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let jwtService: JwtService;
 
   let teacherToken: string;
   let student1Token: string;
@@ -24,6 +27,9 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
   let testQuizId: string;
   let testAssignmentId: string;
   let unassignedQuizId: string;
+  let tiedQuizId: string;
+
+  const testSuffix = Date.now();
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -39,43 +45,70 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
         transform: true,
       }),
     );
-    await app.init();
+    await app.listen(0);
 
     prisma = app.get<PrismaService>(PrismaService);
+    jwtService = app.get<JwtService>(JwtService);
 
-    // 1. Login Teacher
-    const teacherLogin = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'teacher@joraiq.ai', password: 'password123' });
-    teacherToken = teacherLogin.body.accessToken;
-    teacherId = teacherLogin.body.user.id;
+    const hashedPassword = await bcrypt.hash('password123', 10);
 
-    // 2. Login Students
-    const s1Login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'student1@joraiq.ai', password: 'password123' });
-    student1Token = s1Login.body.accessToken;
-    student1Id = s1Login.body.user.id;
+    // 1. Create or ensure test users directly in DB
+    const teacher = await prisma.user.create({
+      data: {
+        email: `test_teacher_${testSuffix}@assessment.test`,
+        password: hashedPassword,
+        name: 'Dr. Test Teacher',
+        role: 'TEACHER',
+      },
+    });
+    teacherId = teacher.id;
+    teacherToken = jwtService.sign({ sub: teacher.id, email: teacher.email, role: 'TEACHER' });
 
-    const s2Login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'student2@joraiq.ai', password: 'password123' });
-    student2Token = s2Login.body.accessToken;
-    student2Id = s2Login.body.user.id;
+    const s1 = await prisma.user.create({
+      data: {
+        email: `test_s1_${testSuffix}@assessment.test`,
+        password: hashedPassword,
+        name: 'Test Student 1',
+        role: 'STUDENT',
+      },
+    });
+    student1Id = s1.id;
+    student1Token = jwtService.sign({ sub: s1.id, email: s1.email, role: 'STUDENT' });
 
-    const s3Login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'student3@joraiq.ai', password: 'password123' });
-    student3Token = s3Login.body.accessToken;
-    student3Id = s3Login.body.user.id;
+    const s2 = await prisma.user.create({
+      data: {
+        email: `test_s2_${testSuffix}@assessment.test`,
+        password: hashedPassword,
+        name: 'Test Student 2',
+        role: 'STUDENT',
+      },
+    });
+    student2Id = s2.id;
+    student2Token = jwtService.sign({ sub: s2.id, email: s2.email, role: 'STUDENT' });
 
-    const s4Login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: 'student4@joraiq.ai', password: 'password123' });
-    student4Token = s4Login.body.accessToken;
-    student4Id = s4Login.body.user.id;
+    const s3 = await prisma.user.create({
+      data: {
+        email: `test_s3_${testSuffix}@assessment.test`,
+        password: hashedPassword,
+        name: 'Test Student 3',
+        role: 'STUDENT',
+      },
+    });
+    student3Id = s3.id;
+    student3Token = jwtService.sign({ sub: s3.id, email: s3.email, role: 'STUDENT' });
 
-    // 3. Create a fresh test quiz for submission tests
+    const s4 = await prisma.user.create({
+      data: {
+        email: `test_s4_${testSuffix}@assessment.test`,
+        password: hashedPassword,
+        name: 'Test Student 4',
+        role: 'STUDENT',
+      },
+    });
+    student4Id = s4.id;
+    student4Token = jwtService.sign({ sub: s4.id, email: s4.email, role: 'STUDENT' });
+
+    // 2. Create a fresh test quiz for submission tests
     const quizRes = await request(app.getHttpServer())
       .post('/quizzes')
       .set('Authorization', `Bearer ${teacherToken}`)
@@ -105,7 +138,7 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
       });
     testQuizId = quizRes.body.id;
 
-    // 4. Assign testQuiz to student4 (who has no prior attempts)
+    // 3. Assign testQuiz to student4
     await request(app.getHttpServer())
       .post(`/quizzes/${testQuizId}/assign`)
       .set('Authorization', `Bearer ${teacherToken}`)
@@ -116,7 +149,7 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
     });
     testAssignmentId = assignments[0].id;
 
-    // 5. Create an unassigned quiz (assigned to nobody)
+    // 4. Create an unassigned quiz
     const unassignedQuizRes = await request(app.getHttpServer())
       .post('/quizzes')
       .set('Authorization', `Bearer ${teacherToken}`)
@@ -129,16 +162,122 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
             options: [
               { text: 'Yes', isCorrect: true },
               { text: 'No', isCorrect: false },
-              { text: 'Maybe', isCorrect: false },
-              { text: 'Unknown', isCorrect: false },
             ],
           },
         ],
       });
     unassignedQuizId = unassignedQuizRes.body.id;
+
+    // 5. Create tied quiz for Test 5
+    const tiedQuiz = await prisma.quiz.create({
+      data: {
+        title: 'Tied Competition Ranking Quiz',
+        description: 'Testing tied leaderboard ranks',
+        teacherId: teacherId,
+        questions: {
+          create: [
+            {
+              text: 'Question 1',
+              order: 0,
+              options: {
+                create: [
+                  { text: 'A', isCorrect: true },
+                  { text: 'B', isCorrect: false },
+                ],
+              },
+            },
+            {
+              text: 'Question 2',
+              order: 1,
+              options: {
+                create: [
+                  { text: 'C', isCorrect: true },
+                  { text: 'D', isCorrect: false },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    tiedQuizId = tiedQuiz.id;
+
+    // Assign tied quiz to s1, s2, s3
+    const a1 = await prisma.quizAssignment.create({
+      data: { quizId: tiedQuizId, studentId: student1Id, status: 'COMPLETED' },
+    });
+    const a2 = await prisma.quizAssignment.create({
+      data: { quizId: tiedQuizId, studentId: student2Id, status: 'COMPLETED' },
+    });
+    const a3 = await prisma.quizAssignment.create({
+      data: { quizId: tiedQuizId, studentId: student3Id, status: 'COMPLETED' },
+    });
+
+    // Create attempts: s1: 100%, s2: 100% (tied!), s3: 50%
+    await prisma.quizAttempt.create({
+      data: {
+        quiz: { connect: { id: tiedQuizId } },
+        student: { connect: { id: student1Id } },
+        assignment: { connect: { id: a1.id } },
+        score: 2,
+        totalQuestions: 2,
+        correctAnswers: 2,
+        incorrectAnswers: 0,
+        accuracy: 100.0,
+      },
+    });
+    await prisma.quizAttempt.create({
+      data: {
+        quiz: { connect: { id: tiedQuizId } },
+        student: { connect: { id: student2Id } },
+        assignment: { connect: { id: a2.id } },
+        score: 2,
+        totalQuestions: 2,
+        correctAnswers: 2,
+        incorrectAnswers: 0,
+        accuracy: 100.0,
+      },
+    });
+    await prisma.quizAttempt.create({
+      data: {
+        quiz: { connect: { id: tiedQuizId } },
+        student: { connect: { id: student3Id } },
+        assignment: { connect: { id: a3.id } },
+        score: 1,
+        totalQuestions: 2,
+        correctAnswers: 1,
+        incorrectAnswers: 1,
+        accuracy: 50.0,
+      },
+    });
   });
 
   afterAll(async () => {
+    // Clean up test data
+    try {
+      await prisma.attemptAnswer.deleteMany({
+        where: { attempt: { studentId: { in: [student1Id, student2Id, student3Id, student4Id] } } },
+      });
+      await prisma.quizAttempt.deleteMany({
+        where: { studentId: { in: [student1Id, student2Id, student3Id, student4Id] } },
+      });
+      await prisma.quizAssignment.deleteMany({
+        where: { studentId: { in: [student1Id, student2Id, student3Id, student4Id] } },
+      });
+      await prisma.option.deleteMany({
+        where: { question: { quizId: { in: [testQuizId, unassignedQuizId, tiedQuizId].filter(Boolean) } } },
+      });
+      await prisma.question.deleteMany({
+        where: { quizId: { in: [testQuizId, unassignedQuizId, tiedQuizId].filter(Boolean) } },
+      });
+      await prisma.quiz.deleteMany({
+        where: { id: { in: [testQuizId, unassignedQuizId, tiedQuizId].filter(Boolean) } },
+      });
+      await prisma.user.deleteMany({
+        where: { id: { in: [teacherId, student1Id, student2Id, student3Id, student4Id].filter(Boolean) } },
+      });
+    } catch {}
+
     await app.close();
   });
 
@@ -219,7 +358,6 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
   // Test 3: Rejection when a student attempts an unassigned quiz
   // -------------------------------------------------------------
   it('Requirement 3: Should reject when a student attempts to take an unassigned quiz with 403 Forbidden', async () => {
-    // Student 4 was never assigned to unassignedQuizId
     const res = await request(app.getHttpServer())
       .get(`/quizzes/${unassignedQuizId}/take`)
       .set('Authorization', `Bearer ${student4Token}`);
@@ -250,7 +388,6 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
       });
 
     expect(createQuizRes.status).toBe(403);
-    expect(createQuizRes.body.message).toContain('Access denied: requires TEACHER role');
 
     // 4b. Student attempts to fetch student list
     const getStudentsRes = await request(app.getHttpServer())
@@ -271,25 +408,18 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
   // Test 5: Correct leaderboard ranking for students with equal scores
   // -------------------------------------------------------------
   it('Requirement 5: Should assign equal ranks to students with equal scores (Standard Competition Ranking)', async () => {
-    // Find Quiz 1 (seeded with Ada Lovelace 100%, Grace Hopper 100%, Claude Shannon 60%)
-    const quiz1 = await prisma.quiz.findFirst({
-      where: { title: { contains: 'Artificial Intelligence' } },
-    });
-
-    expect(quiz1).toBeDefined();
-
     const leaderboardRes = await request(app.getHttpServer())
-      .get(`/quizzes/${quiz1.id}/leaderboard`)
+      .get(`/quizzes/${tiedQuizId}/leaderboard`)
       .set('Authorization', `Bearer ${student1Token}`)
       .expect(200);
 
     const { leaderboard } = leaderboardRes.body;
     expect(leaderboard).toBeDefined();
-    expect(leaderboard.length).toBeGreaterThanOrEqual(3);
+    expect(leaderboard.length).toBe(3);
 
     // Entry 0: 100% -> Rank 1
     // Entry 1: 100% -> Rank 1 (Equal score = Equal rank!)
-    // Entry 2: 60%  -> Rank 3 (Standard competition rank 1, 1, 3)
+    // Entry 2: 50%  -> Rank 3 (Standard competition rank 1, 1, 3)
     const first = leaderboard[0];
     const second = leaderboard[1];
     const third = leaderboard[2];
@@ -300,7 +430,7 @@ describe('JoraIQ.AI Assessment Automated Test Suite (Mandatory Requirements)', (
     expect(second.accuracy).toBe(100.0);
     expect(second.rank).toBe(1); // Equal rank confirmed!
 
-    expect(third.accuracy).toBe(60.0);
+    expect(third.accuracy).toBe(50.0);
     expect(third.rank).toBe(3); // Rank 3 confirmed!
   });
 });

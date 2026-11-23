@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module';
+import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
@@ -16,6 +17,7 @@ import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
       envFilePath: '.env',
     }),
     DatabaseModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     QuizzesModule,

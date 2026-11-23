@@ -24,7 +24,7 @@ export class AssignmentsService {
       throw new ForbiddenException('You do not own this quiz');
     }
 
-    // Verify all studentIds exist and are students
+    // Verify all studentIds exist and are eligible students
     const students = await this.prisma.user.findMany({
       where: {
         id: { in: dto.studentIds },
